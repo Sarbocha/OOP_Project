@@ -66,6 +66,22 @@ ttt/
 
 ---
 
+---
+
+## **How to Run**
+
+### ** Clone Repository**
+
+
+git clone https://github.com/Sarbocha/OOP_Project.git
+
+cd OOP_Project
+
+./gradlew run      # Linux / Mac
+
+gradlew.bat run    # Windows
+
+
 ## Gameplay Instructions
 
 1. Click **Start Game**.  
