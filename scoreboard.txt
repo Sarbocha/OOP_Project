@@ -1,0 +1,10 @@
+ss W:1 L:1
+nn W:1 L:1
+mm W:1 L:1
+sd W:1 L:1
+mosh W:3 L:1
+ham W:3 L:2
+john W:1 L:3
+viper W:3 L:1
+sucker W:1 L:3
+pork W:2 L:3
