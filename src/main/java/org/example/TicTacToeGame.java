@@ -1,164 +1,314 @@
 package org.example;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
 
 /**
- * Tic-Tac-Toe game with GUI, scoreboard, and menu for new match / quit.
+ * GUI Tic-Tac-Toe game window.
+ * Responsibilities:
+ *  - display board UI and score labels
+ *  - handle game lifecycle (moves, win detection, resets)
+ *  - interact with Scoreboard (record results, show scoreboard)
+ * Principles: single-responsibility methods, small helpers, clear separation of UI and model.
  */
-public class TicTacToeGame extends JFrame implements ActionListener {
+public class TicTacToeGame extends JFrame {
 
-    private final Board board;
-    private final JButton[][] buttons;
-    private boolean xTurn = true;
+    // UI / theme constants
+    private static final Font CELL_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 72);
+    private static final Font SCORE_FONT = new Font(Font.SANS_SERIF, Font.BOLD, 16);
+    private static final Color CELL_BG = Color.WHITE;
+    private static final Color CELL_FG = new Color(10, 95, 160);
+    private static final Color WIN_BG = new Color(144, 238, 144); // light green
+    private static final Color PANEL_BG = new Color(230, 230, 230);
+
+    private final Board board;               // game model
+    private final JButton[][] buttons;       // UI cells
+    private boolean xTurn = true;            // turn tracker: true => X, false => O
     private String player1;
     private String player2;
-    private final Scoreboard scoreboard;
+    private final Scoreboard scoreboard;     // persistent scoreboard
 
-    private final JLabel player1Score = new JLabel();
-    private final JLabel player2Score = new JLabel();
+    private final JLabel player1ScoreLabel = new JLabel();
+    private final JLabel player2ScoreLabel = new JLabel();
 
+    /**
+     * Primary constructor
+     */
     public TicTacToeGame(String player1, String player2) {
-        this.player1 = player1;
-        this.player2 = player2;
-        this.board = new Board();
-        this.scoreboard = new Scoreboard();
-        this.buttons = new JButton[3][3];
-
-        setLayout(new BorderLayout());
-        setJMenuBar(createMenuBar());
-        add(createBoardPanel(), BorderLayout.CENTER);
-        add(createScorePanel(), BorderLayout.SOUTH);
-
-        updateScoreboardLabels();
+        this(player1, player2, new Scoreboard());
     }
 
-    /** Menu bar with New Match and Quit options */
-    private JMenuBar createMenuBar() {
-        JMenuBar menuBar = new JMenuBar();
+    /**
+     * Preferred constructor: pass an existing Scoreboard to avoid reloading multiple times.
+     */
+    public TicTacToeGame(String player1, String player2, Scoreboard scoreboard) {
+        super("Tic-Tac-Toe");
+        this.player1 = sanitizeName(player1, "Player1");
+        this.player2 = sanitizeName(player2, "Player2");
+        this.board = new Board();
+        this.scoreboard = scoreboard;
+        this.buttons = new JButton[3][3];
+
+        initUi();
+        updateScoreboardLabels();
+        pack();
+        setLocationRelativeTo(null);
+    }
+
+    /* ---------------------
+       UI initialization
+       --------------------- */
+
+    private void initUi() {
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout(8, 8));
+        getContentPane().setBackground(PANEL_BG);
+
+        setJMenuBar(buildMenuBar());
+        add(buildBoardPanel(), BorderLayout.CENTER);
+        add(buildScorePanel(), BorderLayout.SOUTH);
+    }
+
+    private JMenuBar buildMenuBar() {
+        JMenuBar bar = new JMenuBar();
         JMenu menu = new JMenu("Options");
 
         JMenuItem newMatch = new JMenuItem("New Match");
-        newMatch.addActionListener(e -> startNewMatch());
+        newMatch.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_N, KeyEvent.CTRL_DOWN_MASK));
+        newMatch.addActionListener(e -> startNewMatchFlow());
+
+        JMenuItem viewBoard = new JMenuItem("View Scoreboard");
+        viewBoard.addActionListener(e -> showScoreboardDialog());
 
         JMenuItem quit = new JMenuItem("Quit");
-        quit.addActionListener(e -> System.exit(0));
+        quit.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Q, KeyEvent.CTRL_DOWN_MASK));
+        quit.addActionListener(e -> dispose());
 
         menu.add(newMatch);
+        menu.add(viewBoard);
+        menu.addSeparator();
         menu.add(quit);
-        menuBar.add(menu);
-
-        return menuBar;
+        bar.add(menu);
+        return bar;
     }
 
-    private void startNewMatch() {
-        String p1 = JOptionPane.showInputDialog(this, "Enter Player 1 nickname:", player1);
-        if (p1 != null && !p1.isBlank()) player1 = p1;
-
-        String p2 = JOptionPane.showInputDialog(this, "Enter Player 2 nickname:", player2);
-        if (p2 != null && !p2.isBlank()) player2 = p2;
-
-        resetBoard();
-        updateScoreboardLabels();
-    }
-
-    private JPanel createBoardPanel() {
-        JPanel panel = new JPanel(new GridLayout(3, 3, 5, 5));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        panel.setBackground(Color.BLACK);
+    private JPanel buildBoardPanel() {
+        JPanel panel = new JPanel(new GridLayout(3, 3, 6, 6));
+        panel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        panel.setBackground(PANEL_BG);
 
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
-                JButton b = new JButton();
-                b.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 80));
-                b.setFocusPainted(false);
-                b.setBackground(Color.WHITE);
-                b.setForeground(Color.BLUE);
-                b.addActionListener(this);
-                buttons[i][j] = b;
-                panel.add(b);
+                JButton btn = createCellButton();
+                final int r = i, c = j;
+                btn.addActionListener(e -> onCellClicked(r, c, btn));
+                buttons[i][j] = btn;
+                panel.add(btn);
             }
         }
         return panel;
     }
 
-    private JPanel createScorePanel() {
-        JPanel panel = new JPanel(new GridLayout(1, 2));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 20, 20, 20));
+    private JPanel buildScorePanel() {
+        JPanel panel = new JPanel(new GridLayout(1, 2, 8, 8));
+        panel.setBorder(BorderFactory.createEmptyBorder(6, 12, 12, 12));
+        panel.setBackground(PANEL_BG);
 
-        player1Score.setHorizontalAlignment(SwingConstants.CENTER);
-        player1Score.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
-        player2Score.setHorizontalAlignment(SwingConstants.CENTER);
-        player2Score.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        player1ScoreLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        player1ScoreLabel.setFont(SCORE_FONT);
 
-        panel.add(player1Score);
-        panel.add(player2Score);
+        player2ScoreLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        player2ScoreLabel.setFont(SCORE_FONT);
+
+        panel.add(player1ScoreLabel);
+        panel.add(player2ScoreLabel);
         return panel;
     }
 
-    private void updateScoreboardLabels() {
-        player1Score.setText(player1 + " - Wins: " + scoreboard.getWins(player1) + " Losses: " + scoreboard.getLosses(player1));
-        player2Score.setText(player2 + " - Wins: " + scoreboard.getWins(player2) + " Losses: " + scoreboard.getLosses(player2));
+    private JButton createCellButton() {
+        JButton b = new JButton("");
+        b.setFont(CELL_FONT);
+        b.setFocusPainted(false);
+        b.setBackground(CELL_BG);
+        b.setForeground(CELL_FG);
+        return b;
     }
 
-    @Override
-    public void actionPerformed(ActionEvent e) {
-        JButton clicked = (JButton) e.getSource();
-        if (!clicked.getText().equals("")) return;
+    /* ---------------------
+       Game actions
+       --------------------- */
+
+    private void onCellClicked(int row, int col, JButton clicked) {
+        if (!clicked.isEnabled() || !clicked.getText().isEmpty()) return;
 
         String mark = xTurn ? "X" : "O";
         clicked.setText(mark);
-        int[] pos = getButtonPosition(clicked);
-        board.setCell(mark, pos);
 
-        int[][] winningLine = board.checkWinnerLine();
-        if (winningLine != null) {
+        if (!boardPositionSetSafe(mark, row, col)) {
+            clicked.setText("");
+            return;
+        }
+
+        int[][] winLine = board.checkWinnerLine();
+        if (winLine != null) {
+            disableAllButtons();
+            highlightWinningLine(winLine);
+
             String winner = xTurn ? player1 : player2;
             String loser = xTurn ? player2 : player1;
 
-            highlightWinningLine(winningLine);
-            JOptionPane.showMessageDialog(this, winner + " wins!");
             scoreboard.addWin(winner);
             scoreboard.addLoss(loser);
             scoreboard.save();
             updateScoreboardLabels();
-            resetBoardDelayed();
-        } else if (board.isFull()) {
-            JOptionPane.showMessageDialog(this, "It's a draw!");
-            resetBoardDelayed();
-        } else {
-            xTurn = !xTurn;
+
+            JOptionPane.showMessageDialog(this, winner + " wins!");
+            postRoundMenu();
+            return;
         }
+
+        if (board.isFull()) {
+            disableAllButtons();
+            JOptionPane.showMessageDialog(this, "It's a draw!");
+            postRoundMenu();
+            return;
+        }
+
+        xTurn = !xTurn;
+    }
+
+    private boolean boardPositionSetSafe(String mark, int r, int c) {
+        if (r < 0 || r >= 3 || c < 0 || c >= 3) return false;
+        board.setCell(mark, new int[]{r, c});
+        return true;
     }
 
     private void highlightWinningLine(int[][] line) {
+        if (line == null) return;
         for (int[] pos : line) {
-            buttons[pos[0]][pos[1]].setBackground(Color.GREEN);
+            int r = pos[0], c = pos[1];
+            if (r >= 0 && r < 3 && c >= 0 && c < 3) {
+                buttons[r][c].setBackground(WIN_BG);
+            }
         }
     }
 
-    private void resetBoardDelayed() {
-        Timer timer = new Timer(1000, e -> resetBoard());
-        timer.setRepeats(false);
-        timer.start();
+    private void disableAllButtons() {
+        for (JButton[] row : buttons)
+            for (JButton b : row)
+                b.setEnabled(false);
     }
 
-    private int[] getButtonPosition(JButton clicked) {
-        for (int i = 0; i < 3; i++)
-            for (int j = 0; j < 3; j++)
-                if (buttons[i][j] == clicked) return new int[]{i, j};
-        return new int[]{-1, -1};
+    private void enableAllButtons() {
+        for (JButton[] row : buttons)
+            for (JButton b : row) {
+                b.setEnabled(true);
+                b.setBackground(CELL_BG);
+            }
     }
 
     private void resetBoard() {
         board.reset();
-        for (JButton[] row : buttons)
-            for (JButton b : row) {
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                JButton b = buttons[i][j];
                 b.setText("");
-                b.setBackground(Color.WHITE);
+                b.setBackground(CELL_BG);
+                b.setEnabled(true);
             }
+        }
         xTurn = true;
+    }
+
+    /* ---------------------
+       Scoreboard & players
+       --------------------- */
+
+    private void updateScoreboardLabels() {
+        player1ScoreLabel.setText(String.format("%s  — Wins: %d  Losses: %d",
+                player1, scoreboard.getWins(player1), scoreboard.getLosses(player1)));
+        player2ScoreLabel.setText(String.format("%s  — Wins: %d  Losses: %d",
+                player2, scoreboard.getWins(player2), scoreboard.getLosses(player2)));
+    }
+
+    private void startNewMatchFlow() {
+        String p1 = (String) JOptionPane.showInputDialog(
+                this, "Player 1 nickname:", "Rename Player",
+                JOptionPane.QUESTION_MESSAGE, null, null, player1);
+
+        String p2 = (String) JOptionPane.showInputDialog(
+                this, "Player 2 nickname:", "Rename Player",
+                JOptionPane.QUESTION_MESSAGE, null, null, player2);
+
+        if (p1 != null && !p1.isBlank() && !p1.equals(player1)) {
+            scoreboard.renamePlayer(player1, p1);
+            player1 = sanitizeName(p1, player1);
+        }
+        if (p2 != null && !p2.isBlank() && !p2.equals(player2)) {
+            scoreboard.renamePlayer(player2, p2);
+            player2 = sanitizeName(p2, player2);
+        }
+
+        resetBoard();
+        scoreboard.save();
+        updateScoreboardLabels();
+    }
+
+    private String sanitizeName(String name, String fallback) {
+        if (name == null) return fallback;
+        String s = name.trim();
+        return s.isEmpty() ? fallback : s;
+    }
+
+    /* ---------------------
+       Post-Round Menu
+       --------------------- */
+
+    /**
+     * After a round ends, ask user if they want to restart, new game, or exit.
+     */
+    private void postRoundMenu() {
+        String[] options = {"Restart", "New Game", "Exit"};
+        int choice = JOptionPane.showOptionDialog(
+                this,
+                "Round finished. What would you like to do?",
+                "Next Action",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]
+        );
+
+        if (choice == 0) {
+            resetBoard(); // Restart same players
+        }
+        else if (choice == 1) {
+            startNewMatchFlow(); // New players
+        }
+        else {
+            dispose(); // Exit
+        }
+    }
+
+    private void showScoreboardDialog() {
+        java.util.List<String> players = scoreboard.getTopPlayers();
+        String[] cols = {"Player", "Wins", "Losses"};
+        DefaultTableModel model = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int row, int column) { return false; }
+        };
+
+        for (String p : players) {
+            model.addRow(new Object[]{p, scoreboard.getWins(p), scoreboard.getLosses(p)});
+        }
+
+        JTable table = new JTable(model);
+        table.setFillsViewportHeight(true);
+        JScrollPane scroll = new JScrollPane(table);
+        scroll.setPreferredSize(new Dimension(320, Math.min(400, 30 + players.size() * 24)));
+
+        JOptionPane.showMessageDialog(this, scroll, "Scoreboard", JOptionPane.PLAIN_MESSAGE);
     }
 }
